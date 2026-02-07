@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "../lib/UserProvider";
 
 const DEFAULT_AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
@@ -15,9 +16,7 @@ const DEFAULT_AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="64" h
   <path d="M14 56c3.5-12 14-18 18-18s14.5 6 18 18" fill="#9ca3af"/>
 </svg>`;
 
-const DEFAULT_AVATAR_SRC = `data:image/svg+xml;utf8,${encodeURIComponent(
-  DEFAULT_AVATAR_SVG
-)}`;
+const DEFAULT_AVATAR_SRC = `data:image/svg+xml;utf8,${encodeURIComponent(DEFAULT_AVATAR_SVG)}`;
 
 type TimeOpt = "d" | "w" | "m";
 type GroupOpt = "District" | "City" | "State" | "Gender" | "Age";
@@ -35,14 +34,17 @@ type CategoryOpt =
   | "home"
   | "shopping";
 
-type Row = {
-  rank: number;
-  name: string;
-  metricLabel: string;
-  metricValue: number;
-  trend: "▲" | "▼" | "•";
-  isUser?: boolean;
-};
+type Row =
+  | {
+      kind: "data";
+      rank: number;
+      name: string;
+      metricLabel: string;
+      metricValue: number;
+      trend: "▲" | "▼" | "•";
+      isUser?: boolean;
+    }
+  | { kind: "ellipsis"; id: string };
 
 type ApiModel = {
   rows: Row[];
@@ -56,19 +58,11 @@ type ApiModel = {
   error?: string;
 };
 
+// ===== Graph helpers =====
 function invNorm(p: number) {
-  const a = [
-    -39.69683028665376, 220.9460984245205, -275.9285104469687,
-    138.357751867269, -30.66479806614716, 2.506628277459239,
-  ];
-  const b = [
-    -54.47609879822406, 161.5858368580409, -155.6989798598866,
-    66.80131188771972, -13.28068155288572,
-  ];
-  const c = [
-    -0.007784894002430293, -0.3223964580411365, -2.400758277161838,
-    -2.549732539343734, 4.374664141464968, 2.938163982698783,
-  ];
+  const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239];
+  const b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572];
+  const c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
   const d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
 
   const plow = 0.02425;
@@ -78,39 +72,25 @@ function invNorm(p: number) {
 
   if (p < plow) {
     q = Math.sqrt(-2 * Math.log(p));
-    return (
-      (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
-    );
+    return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
   }
   if (p > phigh) {
     q = Math.sqrt(-2 * Math.log(1 - p));
-    return -(
-      (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
-    );
+    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
   }
 
   q = p - 0.5;
   r = q * q;
-  return (
-    (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
-    (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
-  );
+  return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
 }
 
 function gaussianStd(x: number) {
   return (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-0.5 * x * x);
 }
 
-function StandardBellCurveSvg({
-  topPercent,
-  height = 220,
-}: {
-  topPercent: number | null;
-  height?: number;
-}) {
+function StandardBellCurveSvg({ topPercent, height = 220 }: { topPercent: number | null; height?: number }) {
   const NAVY = "rgb(0, 32, 91)";
+  const FILL = "rgba(0, 32, 91, 0.18)";
   const w = 520;
   const h = height;
 
@@ -128,12 +108,15 @@ function StandardBellCurveSvg({
   const toX = (x: number) => ((x - minX) / (maxX - minX)) * w;
   const toY = (y: number) => h - (y / maxY) * (h * 0.92) - 8;
 
-  const path = data
-    .map(
-      (d, i) =>
-        `${i === 0 ? "M" : "L"} ${toX(d.x).toFixed(2)} ${toY(d.y).toFixed(2)}`
-    )
+  const curvePath = data
+    .map((d, i) => `${i === 0 ? "M" : "L"} ${toX(d.x).toFixed(2)} ${toY(d.y).toFixed(2)}`)
     .join(" ");
+
+  const baselineY = h - 10;
+  const firstX = toX(data[0].x);
+  const lastX = toX(data[data.length - 1].x);
+
+  const fillPath = `${curvePath} L ${lastX.toFixed(2)} ${baselineY.toFixed(2)} L ${firstX.toFixed(2)} ${baselineY.toFixed(2)} Z`;
 
   const showLine = topPercent !== null && topPercent !== undefined;
 
@@ -143,12 +126,22 @@ function StandardBellCurveSvg({
   const z = invNorm(p);
   const ux = toX(Math.min(maxX, Math.max(minX, z)));
 
+  const clipId = `clip-left-of-line-${Math.round(ux)}-${Math.round(h)}-${Math.round(w)}`;
+
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full">
-      <path d={path} fill="none" stroke={NAVY} strokeWidth="3" />
+      <defs>
+        <clipPath id={clipId}>
+          <rect x="0" y="0" width={ux} height={h} />
+        </clipPath>
+      </defs>
+      <path d={fillPath} fill={FILL} stroke="none" clipPath={`url(#${clipId})`} />
+
+      <path d={curvePath} fill="none" stroke={NAVY} strokeWidth="3" />
+
       {showLine ? (
         <>
-          <line x1={ux} x2={ux} y1={8} y2={h - 10} stroke="red" strokeWidth="4" />
+          <line x1={ux} x2={ux} y1={8} y2={baselineY} stroke="red" strokeWidth="4" strokeDasharray="10 8" />
           <text x={Math.min(ux + 8, w - 200)} y={20} fontSize="14" fontWeight="800" fill="red">
             {`Top ${topPercent!.toFixed(1)}%`}
           </text>
@@ -162,62 +155,86 @@ function StandardBellCurveSvg({
   );
 }
 
+
+function normalizeTime(x: string | null): TimeOpt | null {
+  if (x === "d" || x === "w" || x === "m") return x;
+  return null;
+}
+
+function normalizeGroup(x: string | null): GroupOpt | null {
+  if (x === "District" || x === "City" || x === "State" || x === "Gender" || x === "Age") return x;
+  return null;
+}
+
+function normalizeCategory(x: string | null): CategoryOpt | null {
+  const all: CategoryOpt[] = [
+    "food_dining",
+    "travel",
+    "entertainment",
+    "personal_care",
+    "grocery",
+    "health_fitness",
+    "kids_pets",
+    "misc",
+    "gas_transport",
+    "home",
+    "shopping",
+  ];
+  if (x && (all as string[]).includes(x)) return x as CategoryOpt;
+  return null;
+}
+
 export default function RankingsPage() {
   const userId = "EuLe21";
   const { user } = useUser();
 
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const didInitFromUrl = useRef(false);
+
   const [time, setTime] = useState<TimeOpt>("w");
   const [category, setCategory] = useState<CategoryOpt>("food_dining");
   const [group, setGroup] = useState<GroupOpt>("City");
-  const [groupValue, setGroupValue] = useState<string>("PA");
+  const [groupValue, setGroupValue] = useState<string>("");
+
+  const [filtersReady, setFiltersReady] = useState(false);
 
   const [model, setModel] = useState<ApiModel | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [filtersReady, setFiltersReady] = useState(false);
-
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("cuayo_rank_filters_v1");
-      if (raw) {
-        const saved = JSON.parse(raw) as Partial<{
-          time: TimeOpt;
-          category: CategoryOpt;
-          group: GroupOpt;
-          groupValue: string;
-        }>;
+    if (didInitFromUrl.current) return;
 
-        if (saved.time) setTime(saved.time);
-        if (saved.category) setCategory(saved.category);
-        if (saved.group) setGroup(saved.group);
-        if (typeof saved.groupValue === "string") setGroupValue(saved.groupValue);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setFiltersReady(true);
-    }
-  }, []);
+    const t = normalizeTime(searchParams.get("time"));
+    const g = normalizeGroup(searchParams.get("group"));
+    const gv = searchParams.get("groupValue");
+    const c = normalizeCategory(searchParams.get("category"));
+
+    if (t) setTime(t);
+    if (g) setGroup(g);
+    if (typeof gv === "string" && gv.trim()) setGroupValue(gv.trim());
+    if (c) setCategory(c);
+
+    didInitFromUrl.current = true;
+    setFiltersReady(true);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!filtersReady) return;
-    try {
-      localStorage.setItem(
-        "cuayo_rank_filters_v1",
-        JSON.stringify({
-          time,
-          category,
-          group,
-          groupValue: group === "State" ? groupValue : "",
-        })
-      );
-    } catch {
-      // ignore
-    }
-  }, [filtersReady, time, category, group, groupValue]);
+
+    const sp = new URLSearchParams();
+    sp.set("time", time);
+    sp.set("group", group);
+    if (groupValue.trim()) sp.set("groupValue", groupValue.trim());
+    if (category) sp.set("category", category);
+
+    router.replace(`/rankings?${sp.toString()}`);
+  }, [filtersReady, time, group, groupValue, category, router]);
 
   useEffect(() => {
+    if (!filtersReady) return;
+
     const ac = new AbortController();
     const params = new URLSearchParams();
 
@@ -225,10 +242,7 @@ export default function RankingsPage() {
     params.set("time", time);
     params.set("category", category);
     params.set("group", group);
-
-    if (group === "State" && groupValue.trim()) {
-      params.set("groupValue", groupValue.trim().toUpperCase());
-    }
+    if (groupValue.trim()) params.set("groupValue", groupValue.trim());
 
     setLoading(true);
     setError("");
@@ -256,7 +270,7 @@ export default function RankingsPage() {
       .finally(() => setLoading(false));
 
     return () => ac.abort();
-  }, [userId, time, category, group, groupValue]);
+  }, [filtersReady, userId, time, category, group, groupValue]);
 
   const topLabel = useMemo(() => {
     if (model?.topPercent == null) return "—";
@@ -275,11 +289,6 @@ export default function RankingsPage() {
     []
   );
 
-  const meInLeaderboard = useMemo(() => {
-    if (!model?.rows) return false;
-    return model.rows.some((r) => r.isUser === true || r.name === userId);
-  }, [model, userId]);
-
   const isBadValue = (v: unknown) =>
     v === null ||
     v === undefined ||
@@ -293,6 +302,7 @@ export default function RankingsPage() {
       </div>
 
       <div className="grid grid-cols-12 gap-6">
+        {/* Filters */}
         <div className="col-span-12 md:col-span-3 rounded-2xl border border-neutral-200 bg-white p-4">
           <div className="text-[13px] font-bold text-neutral-900">Filters</div>
 
@@ -346,20 +356,19 @@ export default function RankingsPage() {
               </select>
             </div>
 
-            {group === "State" ? (
-              <div>
-                <div className="mb-1 text-xs font-semibold text-neutral-500">State code</div>
-                <input
-                  className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-[13px]"
-                  value={groupValue}
-                  onChange={(e) => setGroupValue(e.target.value)}
-                  placeholder="PA"
-                />
-              </div>
-            ) : null}
+            <div>
+              <div className="mb-1 text-xs font-semibold text-neutral-500">Group value</div>
+              <input
+                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-[13px]"
+                value={groupValue}
+                onChange={(e) => setGroupValue(e.target.value)}
+                placeholder={group === "State" ? "PA" : ""}
+              />
+            </div>
           </div>
         </div>
 
+        {/* Distribution */}
         <div className="col-span-12 md:col-span-5 rounded-2xl border border-neutral-200 bg-white p-4">
           <div className="flex items-center justify-between">
             <div className="text-[13px] font-bold text-neutral-900">Distribution</div>
@@ -391,6 +400,7 @@ export default function RankingsPage() {
           </div>
         </div>
 
+        {/* Leaderboard */}
         <div className="col-span-12 md:col-span-4 rounded-2xl border border-neutral-200 bg-white p-4">
           <div className="text-[13px] font-bold text-neutral-900">Leaderboard</div>
 
@@ -402,9 +412,7 @@ export default function RankingsPage() {
             ) : !model ? (
               <div className="p-4 text-[13px] text-neutral-600">No data</div>
             ) : model.rows.length === 0 ? (
-              <div className="p-4 text-[13px] text-neutral-600">
-                No transactions in this category/timeframe.
-              </div>
+              <div className="p-4 text-[13px] text-neutral-600">No transactions in this category/timeframe.</div>
             ) : (
               <table className="w-full text-[13px]">
                 <thead className="sticky top-0 bg-white">
@@ -418,29 +426,29 @@ export default function RankingsPage() {
 
                 <tbody>
                   {model.rows.map((r) => {
-                    const badRow =
-                      isBadValue(r.rank) ||
-                      isBadValue(r.name) ||
-                      isBadValue(r.metricValue);
+                    if (r.kind === "ellipsis") {
+                      return (
+                        <tr key={r.id} className="border-t border-neutral-200">
+                          <td className="px-3 py-2 text-neutral-400 font-semibold">…</td>
+                          <td className="px-3 py-2 text-neutral-400 font-semibold">…</td>
+                          <td className="px-3 py-2 text-neutral-400 font-semibold">…</td>
+                          <td className="px-3 py-2 text-neutral-400 font-semibold">…</td>
+                        </tr>
+                      );
+                    }
 
-                    // ✅ 핵심 수정: "현재 유저"를 더 강하게 식별 (r.isUser가 안 찍혀도 잡힘)
-                    // 그리고 meInLeaderboard로 막지 않고, 유저 row면 무조건 모드 UI 적용
+                    const badRow = isBadValue(r.rank) || isBadValue(r.name) || isBadValue(r.metricValue);
+
                     const isUser =
-                      r.isUser === true ||
-                      r.name === userId ||
-                      r.name === user?.id ||
-                      r.name === user?.name ||
-                      r.name === "EuLe21";
+                      r.isUser === true || r.name === userId || r.name === user?.id || r.name === user?.name || r.name === "EuLe21";
 
-                    const applyAnonUi = isUser;
-
-                    const displayName = applyAnonUi
+                    const displayName = isUser
                       ? user.anonymousMode
                         ? user.nickname
                         : user.name
                       : r.name;
 
-                    const displayImgSrc = applyAnonUi
+                    const displayImgSrc = isUser
                       ? user.anonymousMode
                         ? DEFAULT_AVATAR_SRC
                         : user.profileImage || DEFAULT_AVATAR_SRC
@@ -452,27 +460,11 @@ export default function RankingsPage() {
                         className="border-t border-neutral-200"
                         style={!badRow && isUser ? userRowStyle : undefined}
                       >
-                        <td
-                          className={`px-3 py-2 ${
-                            !badRow && isUser
-                              ? "font-extrabold text-[rgb(0,32,91)]"
-                              : "font-semibold"
-                          }`}
-                        >
-                          {badRow ? (
-                            <span className="text-neutral-400 font-semibold">...</span>
-                          ) : (
-                            r.rank
-                          )}
+                        <td className={`px-3 py-2 ${!badRow && isUser ? "font-extrabold text-[rgb(0,32,91)]" : "font-semibold"}`}>
+                          {badRow ? <span className="text-neutral-400 font-semibold">...</span> : r.rank}
                         </td>
 
-                        <td
-                          className={`px-3 py-2 ${
-                            !badRow && isUser
-                              ? "font-extrabold text-[rgb(0,32,91)]"
-                              : "font-semibold"
-                          }`}
-                        >
+                        <td className={`px-3 py-2 ${!badRow && isUser ? "font-extrabold text-[rgb(0,32,91)]" : "font-semibold"}`}>
                           {badRow ? (
                             <span className="text-neutral-400 font-semibold">...</span>
                           ) : (
@@ -480,11 +472,7 @@ export default function RankingsPage() {
                               <img
                                 src={displayImgSrc}
                                 alt=""
-                                className={`h-6 w-6 rounded-full ${
-                                  isUser
-                                    ? "ring-2 ring-[rgb(0,32,91)]"
-                                    : "ring-1 ring-neutral-200"
-                                }`}
+                                className={`h-6 w-6 rounded-full ${isUser ? "ring-2 ring-[rgb(0,32,91)]" : "ring-1 ring-neutral-200"}`}
                                 draggable={false}
                               />
                               <span>{displayName}</span>
@@ -493,20 +481,10 @@ export default function RankingsPage() {
                         </td>
 
                         <td className="px-3 py-2">
-                          {badRow ? (
-                            <span className="text-neutral-400 font-semibold">...</span>
-                          ) : (
-                            `${(Number(r.metricValue) * 100).toFixed(2)}%`
-                          )}
+                          {badRow ? <span className="text-neutral-400 font-semibold">...</span> : `${(Number(r.metricValue) * 100).toFixed(2)}%`}
                         </td>
 
-                        <td className="px-3 py-2">
-                          {badRow ? (
-                            <span className="text-neutral-400 font-semibold">...</span>
-                          ) : (
-                            r.trend
-                          )}
-                        </td>
+                        <td className="px-3 py-2">{badRow ? <span className="text-neutral-400 font-semibold">...</span> : r.trend}</td>
                       </tr>
                     );
                   })}

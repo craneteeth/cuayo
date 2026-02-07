@@ -229,6 +229,106 @@ def search_user(user_id, timeframe, ref_time):
     output['budget'] = round(budget,2)
     return output
 
+def _build_display_entries(user_rank, top_users, top_spent_ratios):
+    display_entries = []
+
+    n = min(len(top_users), len(top_spent_ratios))
+    names = list(top_users)[:n]
+    ratios = [float(x) for x in list(top_spent_ratios)[:n]]
+
+    if user_rank is None:
+        for i in range(n):
+            display_entries.append({"name": names[i], "rank": i + 1, "spent_ratio": ratios[i]})
+        return display_entries
+
+    if user_rank <= 3:
+        for i in range(n):
+            display_entries.append({"name": names[i], "rank": i + 1, "spent_ratio": ratios[i]})
+        return display_entries
+
+    # user_rank > 3
+    if n >= 1:
+        display_entries.append({"name": names[0], "rank": 1, "spent_ratio": ratios[0]})
+    if n >= 2:
+        display_entries.append({"name": names[1], "rank": 2, "spent_ratio": ratios[1]})
+    if n >= 3:
+        display_entries.append({"name": names[2], "rank": 3, "spent_ratio": ratios[2]})
+    if n >= 4:
+        display_entries.append({"name": names[3], "rank": int(user_rank) - 1, "spent_ratio": ratios[3]})
+    if n >= 5:
+        display_entries.append({"name": names[4], "rank": int(user_rank), "spent_ratio": ratios[4]})
+    if n >= 6:
+        display_entries.append({"name": names[5], "rank": int(user_rank) + 1, "spent_ratio": ratios[5]})
+
+    return display_entries
+
+
+def _to_rows(display_entries):
+    rows = []
+    # display_entries: [{name, rank, spent_ratio}, ...]
+    for e in display_entries:
+        rows.append({
+            "kind": "data",
+            "rank": int(e["rank"]),
+            "name": str(e["name"]),
+            "metricLabel": "Spent Ratio",
+            "metricValue": float(e["spent_ratio"]),
+            "trend": "•"
+        })
+    return rows
+
+
+def build_category_payload(user_id, category, time, ref_dt, state=None):
+    user_spent_ratio, user_rank, num_users, top_users, top_spent_ratios = search_df(
+        user_id, category, time, ref_dt, state=state
+    )
+
+    top_percent = None
+    if user_rank is not None and num_users:
+        top_percent = (user_rank / num_users) * 100
+
+    display_entries = _build_display_entries(user_rank, top_users, top_spent_ratios)
+
+    rows = _to_rows(display_entries)
+
+    return {
+        "metricLabel": "Spent Ratio",
+        "rows": rows,
+        "displayEntries": display_entries,
+        "userSpentRatio": float(user_spent_ratio),
+        "userRank": None if user_rank is None else int(user_rank),
+        "numUsers": 0 if num_users == [] else int(num_users),
+        "topPercent": None if top_percent is None else float(top_percent),
+        "refTime": ref_dt.isoformat(),
+    }
+
+
+
+def user_best_worst_payload(user_id, time, ref_dt):
+    bw = user_best_worst(user_id, time, ref_dt)
+    best_cat = bw.get("best_category")
+    worst_cat = bw.get("worst_category")
+
+    best_model = None
+    worst_model = None
+
+    if best_cat is not None:
+        best_model = build_category_payload(user_id, best_cat, time, ref_dt, state=None)
+
+    if worst_cat is not None:
+        worst_model = build_category_payload(user_id, worst_cat, time, ref_dt, state=None)
+
+    return {
+        "userId": user_id,
+        "time": time,
+        "group": "State",
+        "groupValue": "",
+        "best": {"category": best_cat, "model": best_model},
+        "worst": {"category": worst_cat, "model": worst_model},
+        "refTime": ref_dt.isoformat(),
+    }
+
+
 if __name__ == "__main__":
     import argparse
     import json
@@ -236,82 +336,25 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--user_id", type=str, required=True)
-    parser.add_argument("--category", type=str, required=True)
     parser.add_argument("--time", type=str, required=True)  # d / w / m
+    parser.add_argument("--category", type=str, required=False)
     parser.add_argument("--state", type=str, default=None)
+
+    parser.add_argument("--home_best_worst", action="store_true")
+
     args = parser.parse_args()
 
-    # fixed reference time
     ref_dt = datetime.datetime(2019, 2, 15)
 
-    user_spent_ratio, user_rank, num_users, top_users, top_spent_ratios = search_df(
-        args.user_id,
-        args.category,
-        args.time,
-        ref_dt,
-        state=args.state,
-    )
+    if args.home_best_worst:
+        payload = user_best_worst_payload(args.user_id, args.time, ref_dt)
+        print(json.dumps(payload))
+        sys.stdout.flush()
+        raise SystemExit(0)
 
-    print(user_best_worst(args.user_id, args.time, ref_dt))
+    if not args.category:
+        raise ValueError("Missing --category (required when not using --home_best_worst)")
 
-    top_percent = None
-    if user_rank is not None and num_users > 0:
-        top_percent = (user_rank / num_users) * 100
-
-    # ------------------------------------------------------------
-    # Leaderboard display only: create displayEntries from search_df output
-    # ------------------------------------------------------------
-    display_entries = []
-
-    # Defensive: align lengths
-    n = min(len(top_users), len(top_spent_ratios))
-    names = list(top_users)[:n]
-    ratios = [float(x) for x in list(top_spent_ratios)[:n]]
-
-    # If user_rank is None (no spend in that category/time), we can only show top list as 1..N
-    if user_rank is None:
-        for i in range(n):
-            display_entries.append(
-                {"name": names[i], "rank": i + 1, "spent_ratio": ratios[i]}
-            )
-    else:
-        # Two cases based on how search_df constructs top list:
-        # - user_rank <= 3: search_df returns ONLY 3 users (top3, including me if in top3)
-        # - user_rank > 3: search_df returns [top3] + (before) + (me) + (after) (up to 6 entries)
-        if user_rank <= 3:
-            # show these 3 as ranks 1..3 (matches display intent)
-            for i in range(n):
-                display_entries.append(
-                    {"name": names[i], "rank": i + 1, "spent_ratio": ratios[i]}
-                )
-        else:
-            # expect positions: 0..2 = top3, 3 = before, 4 = me, 5 = after (some may be missing)
-            if n >= 1:
-                display_entries.append({"name": names[0], "rank": 1, "spent_ratio": ratios[0]})
-            if n >= 2:
-                display_entries.append({"name": names[1], "rank": 2, "spent_ratio": ratios[1]})
-            if n >= 3:
-                display_entries.append({"name": names[2], "rank": 3, "spent_ratio": ratios[2]})
-            if n >= 4:
-                # this is a guess: "right before" is treated as rank-1
-                display_entries.append({"name": names[3], "rank": user_rank - 1, "spent_ratio": ratios[3]})
-            if n >= 5:
-                display_entries.append({"name": names[4], "rank": user_rank, "spent_ratio": ratios[4]})
-            if n >= 6:
-                # this is a guess: "right after" is treated as rank+1
-                display_entries.append({"name": names[5], "rank": user_rank + 1, "spent_ratio": ratios[5]})
-
-    payload = {
-        "userSpentRatio": float(user_spent_ratio),
-        "userRank": user_rank,
-        "numUsers": int(num_users),
-        "topUsers": list(top_users),
-        "topSpentRatios": [float(x) for x in top_spent_ratios],
-        # key change: provide displayEntries so route.ts can render ... correctly
-        "displayEntries": display_entries,
-        "topPercent": None if top_percent is None else float(top_percent),
-        "refTime": ref_dt.isoformat(),
-    }
-
+    payload = build_category_payload(args.user_id, args.category, args.time, ref_dt, state=args.state)
     print(json.dumps(payload))
     sys.stdout.flush()

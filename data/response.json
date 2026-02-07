@@ -290,5 +290,112 @@
       ]
     },
     "advice": "You’re under budget by about $1,212 this month, but Shopping ($951) and Personal Care ($704) are driving over a third of your spend. Set a hard cap for the rest of the month—e.g., limit Shopping to $250 and Personal Care to $150—and pause nonessential purchases until next month. If you want to use the surplus, move at least $600 of it to savings or debt payoff now so it doesn’t get absorbed by extra discretionary spending."
+  },
+  {
+    "createdAt": "2026-02-07T17:10:14Z",
+    "payload": {
+      "mode": "short",
+      "userId": "EuLe21",
+      "time": "w",
+      "total": 1014.56,
+      "budget": 1153.85,
+      "budgetDelta": 139.28999999999996,
+      "topCategories": [
+        {
+          "category": "personal_care",
+          "amount": 405.34,
+          "proportion": 0.3995229459075855
+        },
+        {
+          "category": "home",
+          "amount": 246.21,
+          "proportion": 0.24267662829206751
+        },
+        {
+          "category": "shopping",
+          "amount": 222.48,
+          "proportion": 0.21928717867844189
+        },
+        {
+          "category": "health_fitness",
+          "amount": 125.53,
+          "proportion": 0.12372851285286234
+        },
+        {
+          "category": "misc",
+          "amount": 10,
+          "proportion": 0.009856489512695158
+        }
+      ]
+    },
+    "advice": "You’re under budget this week by $139.29, but nearly 40% of spending went to personal care ($405.34). Set a hard cap for personal care next week (e.g., $300) and move the freed ~$100 into a specific goal (extra debt payment or savings transfer) immediately after payday. To keep momentum, pause non-essential shopping for 7 days and wait 24 hours before any purchase over $50."
+  },
+  {
+    "createdAt": "2026-02-07T17:10:39Z",
+    "payload": {
+      "mode": "short",
+      "userId": "EuLe21",
+      "time": "d",
+      "total": 371.74,
+      "budget": 164.38,
+      "budgetDelta": -207.36,
+      "topCategories": [
+        {
+          "category": "home",
+          "amount": 246.21,
+          "proportion": 0.6623177489643299
+        },
+        {
+          "category": "health_fitness",
+          "amount": 120.53,
+          "proportion": 0.32423199010060794
+        },
+        {
+          "category": "misc",
+          "amount": 5,
+          "proportion": 0.01345026093506214
+        }
+      ]
+    },
+    "advice": "You’re over budget by 207.36 today, with 66% of spend in home (246.21) and 32% in health/fitness (120.53). Pause all non-essential home purchases for the next 48 hours and set a hard cap of 25 on any remaining daily discretionary spend to stop the bleed. If any of the home or health charges are deferrable or returnable, cancel/return one item today to claw back at least 50–100."
+  },
+  {
+    "createdAt": "2026-02-07T17:12:31Z",
+    "payload": {
+      "mode": "detailed",
+      "userId": "EuLe21",
+      "time": "m",
+      "total": 3787.64,
+      "budget": 5000,
+      "budgetDelta": 1212.3600000000001,
+      "topCategories": [
+        {
+          "category": "shopping",
+          "amount": 950.6,
+          "proportion": 0.250974221414918
+        },
+        {
+          "category": "personal_care",
+          "amount": 703.7,
+          "proportion": 0.18578851210780328
+        },
+        {
+          "category": "home",
+          "amount": 546.47,
+          "proportion": 0.14427717523312672
+        },
+        {
+          "category": "kids_pets",
+          "amount": 395.67,
+          "proportion": 0.10446346537685737
+        },
+        {
+          "category": "gas_transport",
+          "amount": 372.4,
+          "proportion": 0.09831979808007096
+        }
+      ]
+    },
+    "advice": "1) One-sentence diagnosis  \nYou’re comfortably under budget this month (spent 3,787.64 of 5,000; 1,212.36 remaining), but spending is concentrated in discretionary areas—especially shopping and personal care—which are the main levers to improve savings.\n\n2) Key observations  \n- You’ve used 75.8% of your monthly budget, leaving a 24.2% buffer; you’re on track to finish under budget if the remaining days don’t include major one-off purchases.  \n- Shopping is your largest category at 950.60 (25.1% of all spend), making it the clearest place to set a cap and reduce variability.  \n- Personal care is high at 703.70 (18.6%), suggesting recurring services/products may be adding up (appointments, salons, cosmetics, subscriptions).  \n- Home (546.47; 14.4%) is meaningful but not outsized; worth checking whether these are steady essentials (utilities/groceries-like) or home-improvement bursts.  \n- Kids/Pets (395.67; 10.4%) and Gas/Transport (372.40; 9.8%) are moderate; these are easier to manage through planning rather than strict elimination.\n\n3) Specific adjustments by category  \n- Shopping (950.60): Set a remaining-month cap (e.g., 200–300) and require a 48-hour delay for non-essentials; consolidate purchases into one planned order to avoid frequent “small” buys.  \n- Personal care (703.70): Audit for repeats and subscriptions; shift to a “maintenance month” (stretch appointment intervals, pause add-on services, and use up current products before replacing). Target a 15–25% reduction next month.  \n- Home (546.47): Separate essentials vs. improvements; put improvements into a sinking fund with a monthly limit so they don’t compete with core savings (e.g., 150–250/month set aside for home projects).  \n- Kids/Pets (395.67): Bulk-buy staples on a schedule, and set a small monthly “extras” allowance to prevent impulse add-ons; consider auto-ship only for true essentials.  \n- Gas/Transport (372.40): Combine errands, use a weekly mileage/commute plan, and check if any trips can be shifted to off-peak or bundled; aim for a 5–10% trim through fewer trips rather than cheaper fuel.\n\n4) A simple plan for next week (3 steps)  \n1. Do a 15-minute line-item review: list all shopping and personal care transactions and mark each as “needed,” “nice-to-have,” or “could-have-waited.”  \n2. Set two hard caps for the week: one for shopping and one for personal care, and move those amounts into separate “allowed” buckets (cash envelope or dedicated account balance).  \n3. Pre-plan purchases and trips: pick one day for any shopping (only from a list) and one combined-errands route to reduce both impulse spending and transport costs."
   }
 ]
