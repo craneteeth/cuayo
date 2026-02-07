@@ -44,7 +44,7 @@ You do not need much effort to start Cuayo. All you need is 3 steps that take le
 
 3. Live your life as usual! Come back to Cuayo whenever you want to see how you perform!
 
-Cuayo will automatically **record** your transactions, **analyze** your spending behavior, and **update** your rankings in real time
+Cuayo will automatically **record** your transactions, **analyze** your spending behavior, and **update** your rankings in real time. 
 
 ## Features
 
@@ -78,11 +78,13 @@ View a complete list of your recent transactions
 
 See how your financial habits evolve
 
-🕶️ **Privacy First**
+🕶️ **Privacy and Safety First**
 
 Enable Anonymous Mode in your profile!
 
 Your name is hidden on leaderboards while still allowing you to compete
+
+In addition, Cuayo will detect **potential fraudulent transactions** not only for your rankings but also for your safety. Check out the main page/dashboard for potential alerts!
 
 ## References and Remarks
 
