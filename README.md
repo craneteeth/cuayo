@@ -1,6 +1,5 @@
 # cuayo
 2026 CMU TartanHacks Project By Eugene Lee, Hayden Lee
-npm run dev -- -p 3000
 
 ## What is Cuayo?
 
@@ -92,6 +91,7 @@ Source of Mock Data: https://huggingface.co/datasets/pointe77/credit-card-transa
 How to Run:
 
 1. Download all of the files in the repo
-
+2. in the terminal cd to cuayo
+3. type npm run dev -- -p 3000
 
 How do I even pronounce Cuayo?: jjo - a - yo  (jjo as in joe but expressing the j sound harder, a as in ah, yo as in yo from yo-yo)
