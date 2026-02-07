@@ -1,220 +1,142 @@
 // app/api/history/route.ts
 import { NextResponse } from "next/server";
-import fs from "fs";
+import { spawn } from "child_process";
 import path from "path";
-import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
-
-export const runtime = "nodejs";
+import fs from "fs";
 
 type TimeOpt = "d" | "w" | "m";
-type GroupOpt = "District" | "City" | "State" | "Gender" | "Age";
-type CategoryOpt =
-  | "food_dining"
-  | "travel"
-  | "entertainment"
-  | "personal_care"
-  | "grocery"
-  | "health_fitness"
-  | "kids_pets"
-  | "misc"
-  | "gas_transport"
-  | "home"
-  | "shopping";
-
-type HistoryPoint = {
-  t: string;
-  userRank: number | null;
-  userSpentRatio: number | null;
-  numUsers: number | null;
-  topPercent: number | null;
-};
-
-type TxRow = {
-  id?: string;
-  time?: string;
-  merchant?: string;
-  category?: string;
-  amount?: number;
-  note?: string;
-};
-
-type PyHistoryPayload = {
-  ok: boolean;
-  history: HistoryPoint[];
-  transactions: TxRow[];
-  snapshot?: any;
-  error?: string;
-};
 
 function normalizeTime(x: string | null): TimeOpt {
   if (x === "d" || x === "w" || x === "m") return x;
-  return "m"; // ✅ default month
+  return "w";
 }
-function normalizeGroup(x: string | null): GroupOpt {
-  if (x === "District" || x === "City" || x === "State" || x === "Gender" || x === "Age") return x;
-  return "State"; // ✅ default State
-}
-function normalizeCategory(x: string | null): CategoryOpt {
-  const all: CategoryOpt[] = [
-    "food_dining",
-    "travel",
-    "entertainment",
-    "personal_care",
-    "grocery",
-    "health_fitness",
-    "kids_pets",
-    "misc",
-    "gas_transport",
-    "home",
-    "shopping",
-  ];
-  if (x && (all as string[]).includes(x)) return x as CategoryOpt;
-  return "food_dining";
-}
-function normalizeInt(x: string | null, fallback: number, min: number, max: number) {
-  const n = Number(x);
+
+function normalizeInt(x: string | null, fallback: number, min: number, max: number): number {
+  const n = Number(x ?? "");
   if (!Number.isFinite(n)) return fallback;
-  const k = Math.floor(n);
-  return Math.max(min, Math.min(max, k));
+  const v = Math.floor(n);
+  return Math.max(min, Math.min(max, v));
 }
 
-// ✅ Desktop/cuayo/data 를 기본으로 찾도록
-function resolvePyDir() {
-  // 1) env 우선
-  if (process.env.PY_DIR && fs.existsSync(process.env.PY_DIR)) return process.env.PY_DIR;
-
-  // 2) 후보들: projectRoot/data, projectRoot/../data
-  const cands = [
-    path.join(process.cwd(), "data"),
-    path.join(process.cwd(), "..", "data"),
-  ];
-  for (const p of cands) {
-    if (fs.existsSync(p)) return p;
-  }
-  return cands[1]; // 기본은 ../data
+function safeStr(x: string | null, fallback = ""): string {
+  return (x ?? fallback).toString();
 }
 
-function resolveHistoryPy(pyDir: string) {
-  if (process.env.HISTORY_PY && fs.existsSync(process.env.HISTORY_PY)) return process.env.HISTORY_PY;
-  return path.join(pyDir, "history_generator.py");
+function resolvePyDir(): string {
+  const env = process.env.PY_DIR;
+  if (env && fs.existsSync(env)) return env;
+
+  const cand1 = path.join(process.cwd(), "data");
+  if (fs.existsSync(cand1)) return cand1;
+
+  const cand2 = path.join(process.cwd(), "..", "data");
+  if (fs.existsSync(cand2)) return cand2;
+
+  return process.cwd();
 }
 
-function runHistoryPython(args: {
-  userId: string;
-  category: CategoryOpt;
-  time: TimeOpt;
-  group: GroupOpt;
-  groupValue: string;
-  points: number;
-}): Promise<PyHistoryPayload> {
+const PYTHON_BIN = process.env.PYTHON_BIN ?? "python";
+
+function runPythonJSON(args: string[], cwd: string): Promise<any> {
   return new Promise((resolve, reject) => {
-    const pyDir = resolvePyDir();
-    const pyPath = resolveHistoryPy(pyDir);
-
-    if (!fs.existsSync(pyDir)) {
-      reject(new Error(`PY_DIR not found: ${pyDir}`));
-      return;
-    }
-    if (!fs.existsSync(pyPath)) {
-      reject(new Error(`history_generator.py not found: ${pyPath}`));
-      return;
-    }
-
-    // ✅ 레퍼런스 route 스타일: CLI args로 전달
-    const scriptArgs = [
-      pyPath,
-      "--user_id",
-      args.userId,
-      "--category",
-      args.category,
-      "--time",
-      args.time,
-      "--group",
-      args.group,
-      "--points",
-      String(args.points),
-    ];
-    if (args.groupValue.trim()) {
-      scriptArgs.push("--group_value", args.groupValue.trim());
-    }
-
-    const isWin = process.platform === "win32";
-
-    // ✅ ENOENT 해결 핵심:
-    // - Windows에서 python이 PATH에 없으면 "py -3"로 실행
-    // - env로 PYTHON_BIN이 지정되면 그걸 우선 사용
-    const pythonBin = process.env.PYTHON_BIN?.trim();
-    const usePyLauncher = isWin && (!pythonBin || pythonBin.toLowerCase() === "python");
-
-    const cmd = usePyLauncher ? "py" : (pythonBin || (isWin ? "python" : "python3"));
-    const cmdArgs = usePyLauncher ? ["-3", ...scriptArgs] : scriptArgs;
-
-    const child: ChildProcessWithoutNullStreams = spawn(cmd, cmdArgs, {
-      cwd: pyDir,
+    const child = spawn(PYTHON_BIN, args, {
+      cwd,
+      windowsHide: true,
       env: {
         ...process.env,
-        PYTHONPATH: pyDir, // rank_generator import 안정화
+        PYTHONIOENCODING: "utf-8",
       },
-      stdio: ["pipe", "pipe", "pipe"],
-      shell: isWin, // Windows에서 PATH/py 실행 안정화
     });
 
     let out = "";
     let err = "";
 
-    child.stdout.on("data", (d) => (out += d.toString("utf-8")));
-    child.stderr.on("data", (d) => (err += d.toString("utf-8")));
+    child.stdout.setEncoding("utf-8");
+    child.stderr.setEncoding("utf-8");
 
-    // ✅ ENOENT/권한 등의 spawn 실패를 반드시 잡아야 uncaughtException이 안 남
-    child.on("error", (e: any) => {
-      reject(new Error(`spawn failed: ${String(e?.message || e)} (cmd=${cmd})`));
-    });
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (err += d));
 
+    child.on("error", (e) => reject(e));
     child.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(err || `python exited with code ${code}`));
-        return;
-      }
-      const raw = (out || "").trim();
+      const raw = (out ?? "").trim();
       if (!raw) {
-        reject(new Error("Python produced empty stdout"));
+        reject(new Error(`Python produced empty stdout (code=${code}). stderr=${err.slice(0, 1200)}`));
         return;
       }
       try {
-        const parsed = JSON.parse(raw) as PyHistoryPayload;
-        // 디버그용 stderr를 필요하면 같이 붙여서 확인 가능
-        if (err && (parsed as any) && typeof parsed === "object") (parsed as any)._stderr = err;
+        const parsed = JSON.parse(raw);
+        if (err && typeof parsed === "object" && parsed) {
+          (parsed as any)._stderr = err.slice(0, 2000);
+        }
         resolve(parsed);
-      } catch {
-        reject(new Error(`Invalid JSON from python:\n${raw.slice(0, 800)}`));
+      } catch (e) {
+        reject(new Error(`Invalid JSON from python (code=${code}). stdout=${raw.slice(0, 800)} stderr=${err.slice(0, 1200)}`));
       }
     });
   });
 }
 
 export async function GET(req: Request) {
+  const url = new URL(req.url);
+
+  const userId = safeStr(url.searchParams.get("userId"), "EuLe21");
+  const category = safeStr(url.searchParams.get("category"), "food_dining");
+  const timeOpt = normalizeTime(url.searchParams.get("time"));
+  const group = safeStr(url.searchParams.get("group"), "State");
+  const groupValue = safeStr(url.searchParams.get("groupValue"), "");
+  const points = normalizeInt(url.searchParams.get("points"), 12, 5, 90);
+
+  const txLimit = normalizeInt(url.searchParams.get("txLimit"), 12, 0, 50);
+
+  const pyDir = resolvePyDir();
+  const pyScript = path.join(pyDir, "history_generator.py");
+
+  if (!fs.existsSync(pyScript)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `history_generator.py not found: ${pyScript}`,
+        hint: `Set PY_DIR to your data folder (e.g. Desktop/cuayo/data) or place data/history_generator.py under project root.`,
+      },
+      { status: 200 }
+    );
+  }
+
+  const pyArgs = [
+    pyScript,
+    "--user_id",
+    userId,
+    "--category",
+    category,
+    "--time",
+    timeOpt,
+    "--group",
+    group,
+    "--group_value",
+    groupValue,
+    "--points",
+    String(points),
+    "--tx_limit",
+    String(txLimit),
+  ];
+
   try {
-    const url = new URL(req.url);
-
-    // ✅ 요구사항: 기본 userId=EuLe21 + time=m
-    const userId = url.searchParams.get("userId")?.trim() || "EuLe21";
-    const time = normalizeTime(url.searchParams.get("time"));
-    const category = normalizeCategory(url.searchParams.get("category"));
-
-    // ✅ History 페이지 기본: State
-    const group = normalizeGroup(url.searchParams.get("group"));
-    const groupValue = url.searchParams.get("groupValue")?.trim() || "";
-
-    const points = normalizeInt(url.searchParams.get("points"), 12, 5, 90);
-
-    const py = await runHistoryPython({ userId, category, time, group, groupValue, points });
-
-    if (!py?.ok) {
-      return NextResponse.json({ ok: false, error: py?.error ?? "history_generator failed", detail: py }, { status: 200 });
-    }
-
-    return NextResponse.json(py, { status: 200 });
+    const parsed = await runPythonJSON(pyArgs, pyDir);
+    return NextResponse.json(parsed, { status: 200 });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 200 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: String(e?.message ?? e),
+        debug: {
+          PYTHON_BIN,
+          pyDir,
+          pyScript,
+          pyArgs,
+        },
+      },
+      { status: 200 }
+    );
   }
 }

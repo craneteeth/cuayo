@@ -64,6 +64,125 @@ function QuickCard({ title, desc, href }: { title: string; desc: string; href: s
   );
 }
 
+/** ===== Fraud demo types/components ===== */
+type FraudTx = {
+  id: string;
+  merchant: string;
+  amount: number;
+  date: string; // display-ready
+  category: string;
+  last4: string;
+};
+
+function FraudCard({
+  hasFraud,
+  count,
+  onClick,
+}: {
+  hasFraud: boolean;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`block w-full rounded-2xl border p-4 text-left transition-colors ${
+        hasFraud
+          ? "border-red-300 bg-red-50 hover:bg-red-100"
+          : "border-neutral-200 bg-white hover:bg-neutral-50"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-bold text-neutral-900">Fraud</div>
+        {hasFraud ? (
+          <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-extrabold text-white">ALERT</span>
+        ) : (
+          <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-bold text-neutral-600">OK</span>
+        )}
+      </div>
+
+      <div className="mt-1 text-xs text-neutral-500">
+        {hasFraud ? `${count} suspicious transaction(s) need review` : "No suspicious transactions"}
+      </div>
+    </button>
+  );
+}
+
+function FraudModal({
+  open,
+  onClose,
+  fraudTxs,
+  onResolve,
+}: {
+  open: boolean;
+  onClose: () => void;
+  fraudTxs: FraudTx[];
+  onResolve: (id: string, action: "not_fraud" | "report_fraud") => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+
+      <div className="relative w-full max-w-2xl rounded-3xl border border-neutral-200 bg-white p-5 shadow-xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-base font-extrabold text-neutral-900">Suspicious transactions</div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-bold text-neutral-700 hover:bg-neutral-50"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {fraudTxs.length === 0 ? (
+            <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-sm font-semibold text-neutral-700">
+              No suspicious transactions.
+            </div>
+          ) : (
+            fraudTxs.map((tx) => (
+              <div key={tx.id} className="rounded-2xl border border-neutral-200 bg-white p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-extrabold text-neutral-900">{tx.merchant}</div>
+                    <div className="mt-1 text-xs text-neutral-500">
+                      {tx.date} · {tx.category} · Card •••• {tx.last4}
+                    </div>
+                  </div>
+                  <div className="text-sm font-extrabold text-neutral-900">${tx.amount.toFixed(2)}</div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onResolve(tx.id, "not_fraud")}
+                    className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-extrabold text-neutral-800 hover:bg-neutral-50"
+                  >
+                    Not fraud
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onResolve(tx.id, "report_fraud")}
+                    className="rounded-xl bg-red-600 px-3 py-2 text-xs font-extrabold text-white hover:bg-red-700"
+                  >
+                    Report fraud
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ===== Graph helpers =====
 function invNorm(p: number) {
   const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239];
@@ -160,13 +279,7 @@ function StandardBellCurveSvg({ topPercent, height = 220 }: { topPercent: number
   );
 }
 
-
-function buildRankingsHref(args: {
-  time: TimeOpt;
-  group: GroupOpt;
-  groupValue: string;
-  category: string | null;
-}) {
+function buildRankingsHref(args: { time: TimeOpt; group: GroupOpt; groupValue: string; category: string | null }) {
   const sp = new URLSearchParams();
   sp.set("time", args.time);
   sp.set("group", args.group);
@@ -176,7 +289,6 @@ function buildRankingsHref(args: {
 }
 
 function ensureEllipsesRows(rows: Row[]): Row[] {
-  // ranking page처럼: 서버가 ellipsis를 주면 그대로 사용
   if (rows.some((r) => r.kind === "ellipsis")) return rows;
 
   const dataRows = rows.filter((r): r is Extract<Row, { kind: "data" }> => r.kind === "data");
@@ -298,13 +410,14 @@ function Panel({
                   const badRow = isBadValue(r.rank) || isBadValue(r.name) || isBadValue(r.metricValue);
 
                   const isUser =
-                    r.isUser === true || r.name === userId || r.name === user?.id || r.name === user?.name || r.name === "EuLe21";
+                    r.isUser === true ||
+                    r.name === userId ||
+                    r.name === user?.id ||
+                    r.name === user?.name ||
+                    r.name === "EuLe21";
 
-                  const displayName = isUser
-                    ? user.anonymousMode
-                      ? user.nickname
-                      : user.name
-                    : r.name;
+                  // ✅ 원본 방식 그대로: user.anonymousMode
+                  const displayName = isUser ? (user.anonymousMode ? user.nickname : user.name) : r.name;
 
                   const displayImgSrc = isUser
                     ? user.anonymousMode
@@ -362,6 +475,37 @@ export default function HomePage() {
   const [error, setError] = useState("");
   const [data, setData] = useState<HomeApi | null>(null);
 
+  // ✅ Fraud demo state (fake data)
+  const [fraudTxs, setFraudTxs] = useState<FraudTx[]>([
+    {
+      id: "ftx_001",
+      merchant: "N0RTHEAST*ELECTR0NICS",
+      amount: 482.19,
+      date: "2026-02-06 11:42 PM",
+      category: "Electronics",
+      last4: "1842",
+    },
+    {
+      id: "ftx_002",
+      merchant: "RideNow · Unknown City",
+      amount: 76.4,
+      date: "2026-02-07 02:18 AM",
+      category: "Transport",
+      last4: "1842",
+    },
+  ]);
+  const [fraudOpen, setFraudOpen] = useState(false);
+
+  const hasFraud = fraudTxs.length > 0;
+
+  function resolveFraud(id: string, _action: "not_fraud" | "report_fraud") {
+    setFraudTxs((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      if (next.length === 0) setFraudOpen(false);
+      return next;
+    });
+  }
+
   useEffect(() => {
     const ac = new AbortController();
     setLoading(true);
@@ -417,6 +561,8 @@ export default function HomePage() {
 
   return (
     <div className="w-full max-w-6xl rounded-3xl bg-white p-8">
+      <FraudModal open={fraudOpen} onClose={() => setFraudOpen(false)} fraudTxs={fraudTxs} onResolve={resolveFraud} />
+
       <div className="grid grid-cols-12 gap-6">
         <section className="col-span-12 md:col-span-8">
           {loading ? (
@@ -425,20 +571,8 @@ export default function HomePage() {
             <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm font-bold text-red-600">{error}</div>
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Panel
-                title="Best ranking"
-                variant="best"
-                category={data?.best.category ?? null}
-                model={data?.best.model ?? null}
-                href={bestHref}
-              />
-              <Panel
-                title="Worst ranking"
-                variant="worst"
-                category={data?.worst.category ?? null}
-                model={data?.worst.model ?? null}
-                href={worstHref}
-              />
+              <Panel title="Best ranking" variant="best" category={data?.best.category ?? null} model={data?.best.model ?? null} href={bestHref} />
+              <Panel title="Worst ranking" variant="worst" category={data?.worst.category ?? null} model={data?.worst.model ?? null} href={worstHref} />
             </div>
           )}
         </section>
@@ -448,6 +582,9 @@ export default function HomePage() {
             <QuickCard title="Rankings" desc="Distribution + Leaderboard" href="/rankings" />
             <QuickCard title="Analytics" desc="Personalized AI Financial Coaching" href="/analytics" />
             <QuickCard title="History" desc="Ranking History + Recent Transactions" href="/history" />
+
+            {/* ✅ Added Fraud card */}
+            <FraudCard hasFraud={hasFraud} count={fraudTxs.length} onClick={() => setFraudOpen(true)} />
           </div>
         </aside>
       </div>

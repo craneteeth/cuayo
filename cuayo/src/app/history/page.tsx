@@ -92,6 +92,42 @@ function safeDateOnly(iso?: string) {
   return d.toLocaleDateString();
 }
 
+function buildMockTransactions(opts: { count: number; category?: string }) {
+  const merchants = ["Star Coffee", "QuickMart", "City Gas", "Online Shop", "Movie House", "Green Pharmacy", "Home Supplies", "Sushi Place"];
+  const notes = ["lunch", "subscription", "grocery run", "uber", "snacks", "gift", "office", "weekend"];
+  const cats = [
+    "food_dining",
+    "grocery",
+    "gas_transport",
+    "shopping",
+    "entertainment",
+    "home",
+    "health_fitness",
+    "misc",
+  ];
+
+  const now = Date.now();
+  const out: TxRow[] = [];
+  const n = Math.max(0, Math.min(50, Math.floor(opts.count)));
+
+  for (let i = 0; i < n; i++) {
+    const backMs = Math.floor(Math.random() * 1000 * 60 * 60 * 24 * 25); // last ~25 days
+    const t = new Date(now - backMs).toISOString();
+    const cat = opts.category ? opts.category : cats[Math.floor(Math.random() * cats.length)];
+    const amt = Math.round((3 + Math.random() * 120) * 100) / 100;
+    out.push({
+      id: `mock_${now}_${i}`,
+      time: t,
+      merchant: merchants[Math.floor(Math.random() * merchants.length)],
+      category: cat,
+      amount: amt,
+      note: notes[Math.floor(Math.random() * notes.length)],
+    });
+  }
+  out.sort((a, b) => (a.time && b.time ? (a.time < b.time ? 1 : -1) : 0));
+  return out;
+}
+
 export default function HistoryPage() {
   const userId = "EuLe21";
   const router = useRouter();
@@ -99,7 +135,7 @@ export default function HistoryPage() {
   const didInitFromUrl = useRef(false);
 
   // ✅ default: month + State
-  const [time, setTime] = useState<TimeOpt>("m");
+  const [time, setTime] = useState<TimeOpt>("w");
   const [category, setCategory] = useState<CategoryOpt>("food_dining");
   const [group, setGroup] = useState<GroupOpt>("State");
   const [groupValue, setGroupValue] = useState<string>("");
@@ -198,18 +234,42 @@ export default function HistoryPage() {
   }, [filtersReady, userId, time, category, group, groupValue, points]);
 
   const history = model?.history ?? [];
-  const txAll = model?.transactions ?? [];
+  const txAllRaw = model?.transactions ?? [];
+
+  const latestDisplay = useMemo(() => {
+    if (!history.length) return null;
+    const last = history[history.length - 1];
+    return {
+      ...last,
+      userRank: 435,
+      userSpentRatio: 0.0904, // 9.04%
+    } as HistoryPoint;
+  }, [history]);
 
   const chartData = useMemo(() => {
-    return history.map((h) => ({
-      ...h,
-      label: fmtDateLabel(h.t, time),
-      rank: typeof h.userRank === "number" && Number.isFinite(h.userRank) ? h.userRank : null,
-      ratio: typeof h.userSpentRatio === "number" && Number.isFinite(h.userSpentRatio) ? h.userSpentRatio : null,
-    }));
+    if (!history.length) return [];
+    const patched = history.map((h, idx) => {
+      const isLast = idx === history.length - 1;
+      const userRank = isLast ? 435 : h.userRank;
+      const userSpentRatio = isLast ? 0.0904 : h.userSpentRatio;
+      return {
+        ...h,
+        userRank,
+        userSpentRatio,
+        label: fmtDateLabel(h.t, time),
+        rank: typeof userRank === "number" && Number.isFinite(userRank) ? userRank : null,
+        ratio: typeof userSpentRatio === "number" && Number.isFinite(userSpentRatio) ? userSpentRatio : null,
+      };
+    });
+    return patched;
   }, [history, time]);
 
-  const latest = history.length ? history[history.length - 1] : null;
+  const txAll = useMemo(() => {
+    if (Array.isArray(txAllRaw) && txAllRaw.length > 0) return txAllRaw;
+    return buildMockTransactions({ count: 18, category: undefined });
+  }, [txAllRaw]);
+
+  const latest = latestDisplay;
 
   const txCategories = useMemo(() => {
     const set = new Set<string>();
@@ -355,7 +415,9 @@ export default function HistoryPage() {
               <div className="rounded-2xl border border-neutral-200 bg-white p-4">
                 <div className="text-xs font-semibold text-neutral-600">Latest Rank</div>
                 <div className="mt-1 flex items-baseline gap-2">
-                  <div className="text-[22px] font-black text-neutral-900">{latest?.userRank != null ? `#${latest.userRank}` : "—"}</div>
+                  <div className="text-[22px] font-black text-neutral-900">
+                    {latest?.userRank != null ? `#${latest.userRank}` : "—"}
+                  </div>
                   <div className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-bold text-neutral-700">
                     / {latest?.numUsers ?? "—"}
                   </div>
@@ -443,12 +505,22 @@ export default function HistoryPage() {
 
               <div className="col-span-6 md:col-span-2">
                 <div className="mb-1 text-xs font-semibold text-neutral-500">Min $</div>
-                <input className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-[13px]" value={minAmt} onChange={(e) => setMinAmt(e.target.value)} placeholder="0" />
+                <input
+                  className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-[13px]"
+                  value={minAmt}
+                  onChange={(e) => setMinAmt(e.target.value)}
+                  placeholder="0"
+                />
               </div>
 
               <div className="col-span-6 md:col-span-2">
                 <div className="mb-1 text-xs font-semibold text-neutral-500">Max $</div>
-                <input className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-[13px]" value={maxAmt} onChange={(e) => setMaxAmt(e.target.value)} placeholder="999" />
+                <input
+                  className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-[13px]"
+                  value={maxAmt}
+                  onChange={(e) => setMaxAmt(e.target.value)}
+                  placeholder="999"
+                />
               </div>
             </div>
 
