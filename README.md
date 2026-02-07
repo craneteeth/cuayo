@@ -91,7 +91,8 @@ Source of Mock Data: https://huggingface.co/datasets/pointe77/credit-card-transa
 How to Run:
 
 1. Download all of the files in the repo
-2. in the terminal cd to cuayo
-3. type npm run dev -- -p 3000
+2. in the data folder, create api.txt file and put your openai api_key (no "" is needed)
+3. in the terminal cd to cuayo
+4. type npm run dev
 
 How do I even pronounce Cuayo?: jjo - a - yo  (jjo as in joe but expressing the j sound harder, a as in ah, yo as in yo from yo-yo)
